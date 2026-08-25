@@ -6,6 +6,12 @@ import {
   setCardStatus,
   spendProgress,
 } from "./cards"
+import {
+  CATEGORY_LABELS,
+  isCurrency,
+  isMerchantCategory,
+  MERCHANT_CATEGORIES,
+} from "./cardRules"
 import { store } from "./store"
 import { CardStatus } from "./types"
 
@@ -54,6 +60,28 @@ describe("createCard", () => {
     expect(first.id).not.toBe(second.id)
     expect(listCards()).toHaveLength(2)
     expect(cardById(first.id)).toBe(first)
+  })
+})
+
+describe("card rule allowlists", () => {
+  it("accepts only the categories we issue against", () => {
+    expect(isMerchantCategory("ad_spend")).toBe(true)
+    expect(isMerchantCategory("crypto")).toBe(false)
+    expect(isMerchantCategory("")).toBe(false)
+    expect(isMerchantCategory(null)).toBe(false)
+  })
+
+  it("accepts only the three settlement currencies", () => {
+    expect(isCurrency("USD")).toBe(true)
+    expect(isCurrency("GBP")).toBe(true)
+    expect(isCurrency("JPY")).toBe(false)
+    expect(isCurrency(250)).toBe(false)
+  })
+
+  it("has a label for every category it allows", () => {
+    for (const category of MERCHANT_CATEGORIES) {
+      expect(CATEGORY_LABELS[category]).toBeTruthy()
+    }
   })
 })
 

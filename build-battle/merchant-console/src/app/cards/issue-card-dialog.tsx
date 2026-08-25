@@ -19,19 +19,20 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/Select"
+import {
+  CARD_CURRENCIES,
+  CATEGORY_LABELS,
+  MAX_LIMIT_MINOR_UNITS,
+  MERCHANT_CATEGORIES,
+} from "@/data/cardRules"
 import { Currency, MerchantCategory } from "@/data/types"
-import { parseAmountToMinorUnits } from "@/lib/money"
+import { formatMoney, parseAmountToMinorUnits } from "@/lib/money"
 import { Plus } from "lucide-react"
 import { useRouter } from "next/navigation"
 import * as React from "react"
 
-const CURRENCIES: Currency[] = ["USD", "EUR", "GBP"]
-
-const CATEGORIES: { value: MerchantCategory; label: string }[] = [
-  { value: "vendor_subscriptions", label: "Vendor subscriptions" },
-  { value: "ad_spend", label: "Ad spend" },
-  { value: "contractor_tools", label: "Contractor tools" },
-]
+/** Radix Select has no empty value, so "no lock" needs a sentinel of its own. */
+const NO_CATEGORY = "none"
 
 interface MerchantOption {
   id: string
@@ -50,7 +51,9 @@ export function IssueCardDialog({
   const [merchantId, setMerchantId] = React.useState("")
   const [limitInput, setLimitInput] = React.useState("")
   const [currency, setCurrency] = React.useState<Currency>("USD")
-  const [category, setCategory] = React.useState<MerchantCategory | "">("")
+  const [category, setCategory] = React.useState<
+    MerchantCategory | typeof NO_CATEGORY
+  >(NO_CATEGORY)
   const [error, setError] = React.useState<string | null>(null)
   const [submitting, setSubmitting] = React.useState(false)
   /** The one-time reveal. Cleared when the dialog closes and never re-fetched. */
@@ -64,7 +67,7 @@ export function IssueCardDialog({
     setMerchantId("")
     setLimitInput("")
     setCurrency("USD")
-    setCategory("")
+    setCategory(NO_CATEGORY)
     setError(null)
     setRevealed(null)
   }
@@ -89,10 +92,20 @@ export function IssueCardDialog({
     event.preventDefault()
     setError(null)
 
-    // Convert once, at the boundary. The server re-validates everything.
+    // Convert once, at the boundary. These checks are courtesy — the server
+    // re-validates all of it and is the actual enforcement.
     const limit = parseAmountToMinorUnits(limitInput)
-    if (limit === null) {
+    if (limit === null || limit <= 0) {
       setError("Enter a spend limit like 250 or 250.00")
+      return
+    }
+    if (limit > MAX_LIMIT_MINOR_UNITS) {
+      setError(
+        `Spend limit cannot exceed ${formatMoney(
+          MAX_LIMIT_MINOR_UNITS,
+          currency,
+        )}`,
+      )
       return
     }
 
@@ -106,7 +119,7 @@ export function IssueCardDialog({
           merchantId,
           limit,
           currency,
-          category: category || null,
+          category: category === NO_CATEGORY ? null : category,
         }),
       })
       const body = await response.json()
@@ -197,7 +210,13 @@ export function IssueCardDialog({
                   Merchant
                 </label>
                 <Select value={merchantId} onValueChange={onMerchantChange}>
-                  <SelectTrigger id="card-merchant" className="mt-2">
+                  {/* A <label for> does not name a button, and the trigger is
+                      one — without this it announces only its current value. */}
+                  <SelectTrigger
+                    id="card-merchant"
+                    aria-label="Merchant"
+                    className="mt-2"
+                  >
                     <SelectValue placeholder="Select a merchant" />
                   </SelectTrigger>
                   <SelectContent>
@@ -240,11 +259,15 @@ export function IssueCardDialog({
                     value={currency}
                     onValueChange={(v) => setCurrency(v as Currency)}
                   >
-                    <SelectTrigger id="card-currency" className="mt-2">
+                    <SelectTrigger
+                      id="card-currency"
+                      aria-label="Currency"
+                      className="mt-2"
+                    >
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      {CURRENCIES.map((code) => (
+                      {CARD_CURRENCIES.map((code) => (
                         <SelectItem key={code} value={code}>
                           {code}
                         </SelectItem>
@@ -264,15 +287,22 @@ export function IssueCardDialog({
                 </label>
                 <Select
                   value={category}
-                  onValueChange={(v) => setCategory(v as MerchantCategory)}
+                  onValueChange={(v) =>
+                    setCategory(v as MerchantCategory | typeof NO_CATEGORY)
+                  }
                 >
-                  <SelectTrigger id="card-category" className="mt-2">
-                    <SelectValue placeholder="No category lock" />
+                  <SelectTrigger
+                    id="card-category"
+                    aria-label="Category lock"
+                    className="mt-2"
+                  >
+                    <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    {CATEGORIES.map((option) => (
-                      <SelectItem key={option.value} value={option.value}>
-                        {option.label}
+                    <SelectItem value={NO_CATEGORY}>No category lock</SelectItem>
+                    {MERCHANT_CATEGORIES.map((value) => (
+                      <SelectItem key={value} value={value}>
+                        {CATEGORY_LABELS[value]}
                       </SelectItem>
                     ))}
                   </SelectContent>

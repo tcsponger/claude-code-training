@@ -1,8 +1,8 @@
 import { Divider } from "@/components/Divider"
 import { CardStatusBadge } from "@/components/ui/cards/StatusBadge"
 import { cardById, spendProgress } from "@/data/cards"
+import { CATEGORY_LABELS } from "@/data/cardRules"
 import { merchantById } from "@/data/merchants"
-import { MerchantCategory } from "@/data/types"
 import { formatDate, formatInZone } from "@/lib/dates"
 import { formatMoney } from "@/lib/money"
 import { cx } from "@/lib/utils"
@@ -11,11 +11,34 @@ import { notFound } from "next/navigation"
 
 export const dynamic = "force-dynamic"
 
-const CATEGORY_LABELS: Record<MerchantCategory, string> = {
-  vendor_subscriptions: "Vendor subscriptions",
-  ad_spend: "Ad spend",
-  contractor_tools: "Contractor tools",
-}
+/**
+ * Tailwind only, so the bar snaps to a fixed scale rather than carrying an
+ * inline width. Five-point steps are finer than the bar can show anyway; the
+ * exact figure is in the text beside it.
+ */
+const BAR_WIDTHS = [
+  "w-0",
+  "w-[5%]",
+  "w-[10%]",
+  "w-[15%]",
+  "w-[20%]",
+  "w-[25%]",
+  "w-[30%]",
+  "w-[35%]",
+  "w-[40%]",
+  "w-[45%]",
+  "w-[50%]",
+  "w-[55%]",
+  "w-[60%]",
+  "w-[65%]",
+  "w-[70%]",
+  "w-[75%]",
+  "w-[80%]",
+  "w-[85%]",
+  "w-[90%]",
+  "w-[95%]",
+  "w-full",
+] as const
 
 export default async function CardDetail({
   params,
@@ -73,11 +96,11 @@ export default async function CardDetail({
           <div
             className={cx(
               "h-full rounded-full",
+              BAR_WIDTHS[Math.round(percent / 5)],
               nearLimit
                 ? "bg-amber-500 dark:bg-amber-500"
                 : "bg-blue-500 dark:bg-blue-500",
             )}
-            style={{ width: `${percent}%` }}
           />
         </div>
         <p

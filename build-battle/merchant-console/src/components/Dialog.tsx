@@ -51,15 +51,9 @@ const DialogOverlay = React.forwardRef<
         "fixed inset-0 z-50 overflow-y-auto",
         // background color
         "bg-black/30",
-        // transition
-        "data-[state=closed]:animate-hide",
         className,
       )}
       {...props}
-      style={{
-        animationDuration: "400ms",
-        animationFillMode: "backwards",
-      }}
     />
   )
 })
@@ -70,25 +64,29 @@ const DialogContent = React.forwardRef<
   React.ComponentPropsWithoutRef<typeof DialogPrimitives.Content>
 >(({ className, ...props }, forwardedRef) => {
   return (
+    // Overlay and Content are siblings, not nested: Radix unmounts each on its
+    // own exit animation. Nesting leaves a closed dialog in the accessibility
+    // tree with its controls still tabbable.
     <DialogPortal>
-      <DialogOverlay>
-        <DialogPrimitives.Content
-          ref={forwardedRef}
-          className={cx(
-            // base
-            "fixed left-1/2 top-1/2 z-50 w-[95vw] max-w-lg -translate-x-1/2 -translate-y-1/2 overflow-y-auto rounded-md border p-4 shadow-lg focus:outline-none sm:p-6",
-            // border color
-            "border-gray-200 dark:border-gray-900",
-            // background color
-            "bg-white dark:bg-[#090E1A]",
-            // transition
-            "data-[state=closed]:animate-hide data-[state=open]:animate-slideUpAndFade",
-            focusRing,
-            className,
-          )}
-          {...props}
-        />
-      </DialogOverlay>
+      <DialogOverlay />
+      <DialogPrimitives.Content
+        ref={forwardedRef}
+        className={cx(
+          // base
+          "fixed left-1/2 top-1/2 z-50 w-[95vw] max-w-lg -translate-x-1/2 -translate-y-1/2 overflow-y-auto rounded-md border p-4 shadow-lg focus:outline-none sm:p-6",
+          // border color
+          "border-gray-200 dark:border-gray-900",
+          // background color
+          "bg-white dark:bg-[#090E1A]",
+          // Entrance only. An exit animation makes Radix defer unmounting
+          // until it ends, which leaves a closed dialog in the accessibility
+          // tree with its controls still tabbable.
+          "data-[state=open]:animate-slideUpAndFade",
+          focusRing,
+          className,
+        )}
+        {...props}
+      />
     </DialogPortal>
   )
 })
