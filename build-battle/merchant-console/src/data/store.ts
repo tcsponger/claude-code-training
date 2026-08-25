@@ -1,6 +1,6 @@
 import { generate } from "./generate"
 import { merchants } from "./merchants"
-import { Dispute, Payment, Payout, Refund } from "./types"
+import { Card, Dispute, Payment, Payout, Refund } from "./types"
 
 /**
  * In-memory store.
@@ -19,6 +19,11 @@ interface Store {
   refunds: Refund[]
   disputes: Dispute[]
   payouts: Payout[]
+  /**
+   * Cards issued through the console (NWP-201). Starts empty — cards are not
+   * part of the generated seed data, only ops-created ones live here.
+   */
+  cards: Card[]
 }
 
 declare global {
@@ -28,7 +33,7 @@ declare global {
 
 function createStore(): Store {
   const { payments, refunds, disputes, payouts } = generate()
-  return { merchants, payments, refunds, disputes, payouts }
+  return { merchants, payments, refunds, disputes, payouts, cards: [] }
 }
 
 export const store: Store = globalThis.__northwindStore ?? createStore()
