@@ -110,8 +110,11 @@ const DrawerHeader = React.forwardRef<
         {children}
       </div>
       <DrawerPrimitives.Close asChild>
+        {/* The icon is aria-hidden, so without a label this button has no
+            accessible name and announces only as "button". */}
         <Button
           variant="ghost"
+          aria-label="Close"
           className="aspect-square p-1 hover:bg-gray-100 hover:dark:bg-gray-400/10"
         >
           <RiCloseLine className="size-6" aria-hidden="true" />
