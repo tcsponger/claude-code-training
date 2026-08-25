@@ -3,13 +3,29 @@ import { CardStatusBadge } from "@/components/ui/cards/StatusBadge"
 import { cardById, spendProgress } from "@/data/cards"
 import { CATEGORY_LABELS } from "@/data/cardRules"
 import { merchantById } from "@/data/merchants"
+import { CardEventType } from "@/data/types"
 import { formatDate, formatInZone } from "@/lib/dates"
 import { formatMoney } from "@/lib/money"
 import { cx } from "@/lib/utils"
 import Link from "next/link"
 import { notFound } from "next/navigation"
+import { CardStatusActions } from "../status-actions"
 
 export const dynamic = "force-dynamic"
+
+const EVENT_LABELS: Record<CardEventType, string> = {
+  issued: "Card issued",
+  frozen: "Frozen",
+  unfrozen: "Unfrozen",
+  cancelled: "Cancelled",
+}
+
+const EVENT_DOTS: Record<CardEventType, string> = {
+  issued: "bg-blue-500",
+  frozen: "bg-gray-400 dark:bg-gray-500",
+  unfrozen: "bg-emerald-600 dark:bg-emerald-400",
+  cancelled: "bg-red-500",
+}
 
 /**
  * Tailwind only, so the bar snaps to a fixed scale rather than carrying an
@@ -137,7 +153,11 @@ export default async function CardDetail({
         </Field>
         <Field label="Currency">{card.currency}</Field>
         <Field label="Status">
-          <CardStatusBadge status={card.status} />
+          <CardStatusActions
+            cardId={card.id}
+            nickname={card.nickname}
+            initialStatus={card.status}
+          />
         </Field>
         <Field label="Category lock">
           {card.category ? CATEGORY_LABELS[card.category] : "None"}
@@ -152,6 +172,35 @@ export default async function CardDetail({
         )}
         <Field label="Issued">{formatDate(card.createdAt)}</Field>
       </dl>
+
+      <Divider />
+
+      <h2 className="text-sm font-semibold text-gray-900 dark:text-gray-50">
+        History
+      </h2>
+      <ol className="mt-4 space-y-4">
+        {card.events.map((event, index) => (
+          <li key={index} className="flex gap-3">
+            <span
+              className={cx(
+                "mt-1.5 size-2 shrink-0 rounded-full",
+                EVENT_DOTS[event.type],
+              )}
+              aria-hidden="true"
+            />
+            <div>
+              <p className="text-sm text-gray-900 dark:text-gray-50">
+                {EVENT_LABELS[event.type]}
+              </p>
+              <p className="text-sm text-gray-500">
+                {merchant
+                  ? formatInZone(event.at, merchant.timezone)
+                  : formatDate(event.at)}
+              </p>
+            </div>
+          </li>
+        ))}
+      </ol>
     </div>
   )
 }

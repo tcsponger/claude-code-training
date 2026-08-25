@@ -78,6 +78,14 @@ export type MerchantCategory =
   | "ad_spend"
   | "contractor_tools"
 
+export type CardEventType = "issued" | "frozen" | "unfrozen" | "cancelled"
+
+export interface CardEvent {
+  type: CardEventType
+  /** ISO 8601, always UTC. */
+  at: string
+}
+
 export interface Card {
   id: string
   nickname: string
@@ -93,6 +101,8 @@ export interface Card {
   /** Integer minor units, spent against `limit`. */
   spend: number
   category: MerchantCategory | null
+  /** Every state change, oldest first. Answers "what happened to this card". */
+  events: CardEvent[]
   /** ISO 8601, always UTC. */
   createdAt: string
 }

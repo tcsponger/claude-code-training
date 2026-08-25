@@ -24,6 +24,11 @@ interface Store {
    * part of the generated seed data, only ops-created ones live here.
    */
   cards: Card[]
+  /**
+   * Idempotency key -> card id, so a retried or double-clicked issue request
+   * returns the card that already exists instead of issuing a second one.
+   */
+  cardIssueKeys: Record<string, string>
 }
 
 declare global {
@@ -33,7 +38,15 @@ declare global {
 
 function createStore(): Store {
   const { payments, refunds, disputes, payouts } = generate()
-  return { merchants, payments, refunds, disputes, payouts, cards: [] }
+  return {
+    merchants,
+    payments,
+    refunds,
+    disputes,
+    payouts,
+    cards: [],
+    cardIssueKeys: {},
+  }
 }
 
 export const store: Store = globalThis.__northwindStore ?? createStore()

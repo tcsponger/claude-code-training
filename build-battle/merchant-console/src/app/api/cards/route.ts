@@ -37,7 +37,9 @@ export async function POST(request: NextRequest) {
     )
   }
 
-  if (typeof merchantId !== "string" || !merchantById(merchantId)) {
+  const merchant =
+    typeof merchantId === "string" ? merchantById(merchantId) : undefined
+  if (!merchant) {
     return NextResponse.json(
       { message: "Merchant is required" },
       { status: 400 },
@@ -49,6 +51,17 @@ export async function POST(request: NextRequest) {
   if (!isCurrency(currency)) {
     return NextResponse.json(
       { message: "Currency must be one of USD, EUR, GBP" },
+      { status: 400 },
+    )
+  }
+
+  // A card that settles in a currency its merchant does not is a limit nobody
+  // can reconcile. The merchant decides the currency; the client only echoes it.
+  if (currency !== merchant.currency) {
+    return NextResponse.json(
+      {
+        message: `${merchant.name} settles in ${merchant.currency}, so this card cannot be issued in ${currency}`,
+      },
       { status: 400 },
     )
   }
@@ -79,13 +92,23 @@ export async function POST(request: NextRequest) {
     )
   }
 
-  const { card, number } = createCard({
+  const result = createCard({
     nickname: nickname.trim(),
-    merchantId,
+    merchantId: merchant.id,
     limit,
     currency,
     category: isMerchantCategory(category) ? category : null,
+    idempotencyKey: request.headers.get("idempotency-key"),
   })
 
-  return NextResponse.json({ card, number }, { status: 201 })
+  // A replay returns the card that already exists, without the number: it was
+  // revealed on the original response, and the reveal is once.
+  if (result.replayed) {
+    return NextResponse.json({ card: result.card, replayed: true })
+  }
+
+  return NextResponse.json(
+    { card: result.card, number: result.number },
+    { status: 201 },
+  )
 }

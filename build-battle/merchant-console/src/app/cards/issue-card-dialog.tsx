@@ -61,6 +61,12 @@ export function IssueCardDialog({
     number: string
     nickname: string
   } | null>(null)
+  /**
+   * One key per dialog session. A double-click, a retry after a timeout, or a
+   * resubmit all carry the same key, so the server issues one card rather than
+   * one per click.
+   */
+  const idempotencyKey = React.useRef(crypto.randomUUID())
 
   function reset() {
     setNickname("")
@@ -70,6 +76,8 @@ export function IssueCardDialog({
     setCategory(NO_CATEGORY)
     setError(null)
     setRevealed(null)
+    // A new dialog session is a new card, so it gets a new key.
+    idempotencyKey.current = crypto.randomUUID()
   }
 
   function onOpenChange(next: boolean) {
@@ -81,7 +89,9 @@ export function IssueCardDialog({
     }
   }
 
-  /** Picking a merchant defaults the currency to the one they settle in. */
+  const selectedMerchant = merchants.find((m) => m.id === merchantId)
+
+  /** The merchant decides the currency; the form only reflects it. */
   function onMerchantChange(id: string) {
     setMerchantId(id)
     const merchant = merchants.find((m) => m.id === id)
@@ -113,7 +123,10 @@ export function IssueCardDialog({
     try {
       const response = await fetch("/api/cards", {
         method: "POST",
-        headers: { "content-type": "application/json" },
+        headers: {
+          "content-type": "application/json",
+          "idempotency-key": idempotencyKey.current,
+        },
         body: JSON.stringify({
           nickname,
           merchantId,
@@ -126,6 +139,15 @@ export function IssueCardDialog({
 
       if (!response.ok) {
         setError(body?.message ?? "Could not issue the card. Try again.")
+        return
+      }
+
+      if (body.replayed) {
+        // This attempt already issued a card. The number was revealed on that
+        // first response and is not shown twice.
+        setError(
+          `${body.card.nickname} was already issued. Its number was shown once and cannot be shown again — close this and open the card to check it.`,
+        )
         return
       }
 
@@ -255,13 +277,13 @@ export function IssueCardDialog({
                   >
                     Currency
                   </label>
-                  <Select
-                    value={currency}
-                    onValueChange={(v) => setCurrency(v as Currency)}
-                  >
+                  {/* Set by the merchant, not chosen: a card that settles in a
+                      currency its merchant does not is a limit nobody can
+                      reconcile. The server rejects a mismatch either way. */}
+                  <Select value={currency} disabled>
                     <SelectTrigger
                       id="card-currency"
-                      aria-label="Currency"
+                      aria-label="Currency, set by the merchant"
                       className="mt-2"
                     >
                       <SelectValue />
@@ -274,6 +296,11 @@ export function IssueCardDialog({
                       ))}
                     </SelectContent>
                   </Select>
+                  <p className="mt-1 text-xs text-gray-500">
+                    {selectedMerchant
+                      ? `${selectedMerchant.name} settles in ${currency}`
+                      : "Set by the merchant you pick"}
+                  </p>
                 </div>
               </div>
 

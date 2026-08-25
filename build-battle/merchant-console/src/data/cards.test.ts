@@ -30,36 +30,83 @@ const input = {
 
 beforeEach(() => {
   store.cards.length = 0
+  for (const key of Object.keys(store.cardIssueKeys)) {
+    delete store.cardIssueKeys[key]
+  }
 })
+
+/** Issues a card, asserting it was a fresh issue rather than a replay. */
+function issue(overrides: Partial<typeof input> & { idempotencyKey?: string } = {}) {
+  const result = createCard({ ...input, ...overrides })
+  if (result.replayed) throw new Error("expected a fresh issue, got a replay")
+  return result
+}
 
 describe("createCard", () => {
   it("stores last four and a reference, never the full number", () => {
-    const { card, number } = createCard(input)
+    const { card, number } = issue()
 
     expect(card.last4).toBe(number.slice(-4))
     expect(JSON.stringify(card)).not.toContain(number)
     expect(card.numberRef).not.toBe(number)
   })
 
+  it("records the issue in the card's history", () => {
+    const { card } = issue()
+    expect(card.events).toEqual([{ type: "issued", at: card.createdAt }])
+  })
+
   it("keeps the limit in the minor units it was given", () => {
-    const { card } = createCard({ ...input, limit: 25000 })
+    const { card } = issue({ limit: 25000 })
     expect(card.limit).toBe(25000)
     expect(Number.isInteger(card.limit)).toBe(true)
   })
 
   it("starts active with no spend", () => {
-    const { card } = createCard(input)
+    const { card } = issue()
     expect(card.status).toBe("active")
     expect(card.spend).toBe(0)
   })
 
   it("adds the card to the store and hands back a distinct id each time", () => {
-    const first = createCard(input).card
-    const second = createCard(input).card
+    const first = issue().card
+    const second = issue().card
 
     expect(first.id).not.toBe(second.id)
     expect(listCards()).toHaveLength(2)
     expect(cardById(first.id)).toBe(first)
+  })
+})
+
+describe("createCard idempotency", () => {
+  it("issues one card when the same key arrives twice", () => {
+    const first = createCard({ ...input, idempotencyKey: "key-1" })
+    const second = createCard({ ...input, idempotencyKey: "key-1" })
+
+    expect(first.replayed).toBe(false)
+    expect(second.replayed).toBe(true)
+    expect(second.card.id).toBe(first.card.id)
+    expect(listCards()).toHaveLength(1)
+  })
+
+  it("does not reveal the number again on a replay", () => {
+    createCard({ ...input, idempotencyKey: "key-1" })
+    const replay = createCard({ ...input, idempotencyKey: "key-1" })
+
+    expect(replay.replayed).toBe(true)
+    expect(replay).not.toHaveProperty("number")
+  })
+
+  it("issues separate cards for different keys", () => {
+    createCard({ ...input, idempotencyKey: "key-1" })
+    createCard({ ...input, idempotencyKey: "key-2" })
+    expect(listCards()).toHaveLength(2)
+  })
+
+  it("issues every time when no key is given", () => {
+    issue()
+    issue()
+    expect(listCards()).toHaveLength(2)
   })
 })
 
@@ -135,7 +182,7 @@ describe("setCardStatus", () => {
   ]
 
   it.each(legal)("allows %s → %s", (from, to) => {
-    const { card } = createCard(input)
+    const { card } = issue()
     if (from !== "active") setCardStatus(card.id, from)
 
     const result = setCardStatus(card.id, to)
@@ -146,7 +193,7 @@ describe("setCardStatus", () => {
   it.each<CardStatus>(["active", "frozen"])(
     "refuses cancelled → %s, because cancelled is terminal",
     (to) => {
-      const { card } = createCard(input)
+      const { card } = issue()
       setCardStatus(card.id, "cancelled")
 
       expect(setCardStatus(card.id, to)).toEqual({
@@ -157,7 +204,7 @@ describe("setCardStatus", () => {
   )
 
   it("treats a no-op transition as a success without changing anything", () => {
-    const { card } = createCard(input)
+    const { card } = issue()
     expect(setCardStatus(card.id, "active")).toEqual({ card })
     expect(card.status).toBe("active")
   })
@@ -166,5 +213,46 @@ describe("setCardStatus", () => {
     expect(setCardStatus("card_missing", "frozen")).toEqual({
       error: "not_found",
     })
+  })
+})
+
+describe("card history", () => {
+  it("records every state change in order", () => {
+    const { card } = issue()
+    setCardStatus(card.id, "frozen")
+    setCardStatus(card.id, "active")
+    setCardStatus(card.id, "cancelled")
+
+    expect(card.events.map((e) => e.type)).toEqual([
+      "issued",
+      "frozen",
+      "unfrozen",
+      "cancelled",
+    ])
+  })
+
+  it("does not record a transition the state machine refused", () => {
+    const { card } = issue()
+    setCardStatus(card.id, "cancelled")
+    setCardStatus(card.id, "active")
+
+    expect(card.events.map((e) => e.type)).toEqual(["issued", "cancelled"])
+  })
+
+  it("does not record a no-op transition", () => {
+    const { card } = issue()
+    setCardStatus(card.id, "active")
+    expect(card.events).toHaveLength(1)
+  })
+
+  it("timestamps every event in UTC, oldest first", () => {
+    const { card } = issue()
+    setCardStatus(card.id, "frozen")
+
+    for (const event of card.events) {
+      expect(event.at).toMatch(/Z$/)
+    }
+    const timestamps = card.events.map((e) => e.at)
+    expect([...timestamps].sort()).toEqual(timestamps)
   })
 })

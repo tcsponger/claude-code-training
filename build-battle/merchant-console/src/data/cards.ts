@@ -1,6 +1,12 @@
 import { generateCardNumber } from "@/lib/cardNumber"
 import { store } from "./store"
-import { Card, CardStatus, Currency, MerchantCategory } from "./types"
+import {
+  Card,
+  CardEventType,
+  CardStatus,
+  Currency,
+  MerchantCategory,
+} from "./types"
 
 /**
  * The one place `store.cards` is written. Payments/refunds/disputes/payouts
@@ -36,17 +42,36 @@ export interface CreateCardInput {
   limit: number
   currency: Currency
   category?: MerchantCategory | null
+  /**
+   * Optional client-supplied key. Two requests carrying the same one issue
+   * one card: the second is a replay, not a second card.
+   */
+  idempotencyKey?: string | null
 }
+
+export type CreateCardResult =
+  /** A card was issued. `number` is the one and only time it is returned. */
+  | { card: Card; number: string; replayed: false }
+  /**
+   * This key already issued a card. The card comes back, the number does
+   * not — it was revealed on the original response and reveal is once.
+   */
+  | { card: Card; replayed: true }
 
 /**
  * Creates a card and returns it alongside the full generated number. The
  * full number is not part of the `Card` record — it exists only in this
  * return value, for the route handler to send back exactly once.
  */
-export function createCard(
-  input: CreateCardInput,
-): { card: Card; number: string } {
+export function createCard(input: CreateCardInput): CreateCardResult {
+  const key = input.idempotencyKey
+  if (key) {
+    const existing = cardById(store.cardIssueKeys[key] ?? "")
+    if (existing) return { card: existing, replayed: true }
+  }
+
   const { number, last4, numberRef } = generateCardNumber()
+  const at = new Date().toISOString()
 
   const card: Card = {
     id: nextId(),
@@ -59,11 +84,14 @@ export function createCard(
     status: "active",
     spend: 0,
     category: input.category ?? null,
-    createdAt: new Date().toISOString(),
+    events: [{ type: "issued", at }],
+    createdAt: at,
   }
 
   store.cards.push(card)
-  return { card, number }
+  if (key) store.cardIssueKeys[key] = card.id
+
+  return { card, number, replayed: false }
 }
 
 /** Past this share of the limit, the detail view warns rather than informs. */
@@ -89,6 +117,13 @@ const ALLOWED_TRANSITIONS: Record<CardStatus, CardStatus[]> = {
   cancelled: [],
 }
 
+/** What a move into each status is called in the card's history. */
+const EVENT_FOR_STATUS: Record<CardStatus, CardEventType> = {
+  active: "unfrozen",
+  frozen: "frozen",
+  cancelled: "cancelled",
+}
+
 export type SetCardStatusResult =
   | { card: Card }
   | { error: "not_found" | "invalid_transition" }
@@ -107,5 +142,6 @@ export function setCardStatus(
   }
 
   card.status = next
+  card.events.push({ type: EVENT_FOR_STATUS[next], at: new Date().toISOString() })
   return { card }
 }
