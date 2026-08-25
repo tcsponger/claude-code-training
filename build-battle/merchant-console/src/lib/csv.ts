@@ -25,6 +25,37 @@ export const EXPORT_COLUMNS = [
 
 export type ExportColumn = (typeof EXPORT_COLUMNS)[number]
 
+/**
+ * The safe default: every column except the card last four. Used both as the
+ * export dialog's initial selection and as the server-side fallback when a
+ * request supplies no valid columns, so last4 never ships unless someone
+ * opts in.
+ */
+export const DEFAULT_EXPORT_COLUMNS = EXPORT_COLUMNS.filter(
+  (column) => column !== "last4",
+)
+
+/**
+ * Column names arrive from the client (NWP-101), so this is the one place
+ * they get checked against the allowlist before reaching `toCsv`. An empty
+ * or entirely unrecognized list falls back to `DEFAULT_EXPORT_COLUMNS`
+ * rather than producing an empty file.
+ */
+export function parseExportColumns(raw: string[]): ExportColumn[] {
+  const seen = new Set<string>()
+  const columns: ExportColumn[] = []
+  for (const value of raw) {
+    if (
+      (EXPORT_COLUMNS as readonly string[]).includes(value) &&
+      !seen.has(value)
+    ) {
+      seen.add(value)
+      columns.push(value as ExportColumn)
+    }
+  }
+  return columns.length > 0 ? columns : DEFAULT_EXPORT_COLUMNS
+}
+
 function escapeCell(value: string): string {
   if (/[",\n]/.test(value)) return `"${value.replace(/"/g, '""')}"`
   return value
@@ -66,6 +97,7 @@ export function toCsv(
   return [header, ...rows].join("\n")
 }
 
-export function exportFilename(date = new Date()): string {
-  return `payments-${date.toISOString().slice(0, 10)}.csv`
+export function exportFilename(date = new Date(), slug?: string): string {
+  const stamp = date.toISOString().slice(0, 10)
+  return slug ? `payments-${slug}-${stamp}.csv` : `payments-${stamp}.csv`
 }
