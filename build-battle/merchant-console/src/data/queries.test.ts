@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest"
-import { sortPayments } from "./queries"
+import { filterPayments, parseFilters, sortPayments } from "./queries"
+import { store } from "./store"
 import { Payment } from "./types"
 
 /**
@@ -50,6 +51,58 @@ describe("sortPayments by amount", () => {
     const original = rows.map((p) => p.amount)
     sortPayments(rows, "amount", "desc")
     expect(rows.map((p) => p.amount)).toEqual(original)
+  })
+})
+
+describe("filterPayments by date range", () => {
+  const onAnchorDay = store.payments.filter(
+    (p) => p.createdAt.slice(0, 10) === "2026-08-13",
+  )
+
+  it("includes the whole of the end day", () => {
+    // `to` compares a calendar day against a full instant. Comparing the raw
+    // ISO string dropped every payment timestamped after midnight on that day.
+    expect(onAnchorDay.length).toBeGreaterThan(0)
+    const rows = filterPayments({ to: "2026-08-13" })
+    const onLastDay = rows.filter(
+      (p) => p.createdAt.slice(0, 10) === "2026-08-13",
+    )
+    expect(onLastDay).toHaveLength(onAnchorDay.length)
+  })
+
+  it("returns that day's payments for a single-day range", () => {
+    const rows = filterPayments({ from: "2026-08-13", to: "2026-08-13" })
+    expect(rows).toHaveLength(onAnchorDay.length)
+  })
+
+  it("still excludes days outside the range", () => {
+    const rows = filterPayments({ from: "2026-08-13", to: "2026-08-13" })
+    for (const row of rows) {
+      expect(row.createdAt.slice(0, 10)).toBe("2026-08-13")
+    }
+  })
+})
+
+describe("parseFilters", () => {
+  it("keeps a well-formed calendar day", () => {
+    const filters = parseFilters(new URLSearchParams("from=2026-08-01"))
+    expect(filters.from).toBe("2026-08-01")
+  })
+
+  it("drops a date it cannot compare rather than returning nothing", () => {
+    // "08/13/2026" compares lexicographically against ISO timestamps and
+    // silently matches no rows, which reads as "no results" not "bad input".
+    const filters = parseFilters(new URLSearchParams("from=08/13/2026"))
+    expect(filters.from).toBeUndefined()
+    expect(filterPayments(filters).length).toBe(store.payments.length)
+  })
+
+  it("carries sort and direction, which the payments page relies on", () => {
+    const filters = parseFilters(
+      new URLSearchParams("sort=amount&direction=asc"),
+    )
+    expect(filters.sort).toBe("amount")
+    expect(filters.direction).toBe("asc")
   })
 })
 

@@ -1,6 +1,19 @@
+import { utcDayKey } from "@/lib/dates"
 import { merchantById } from "./merchants"
 import { store } from "./store"
 import { Payment, PaymentFilters, PaymentStatus } from "./types"
+
+/** A calendar day, as the date inputs and the export route send it. */
+const DAY = /^\d{4}-\d{2}-\d{2}$/
+
+/**
+ * Dates arrive from the client, so they are checked before they reach the
+ * query. An unparseable one compares lexicographically against ISO strings
+ * and silently returns zero rows, which reads as "no results" rather than
+ * "bad request".
+ */
+const asDay = (value: string | null) =>
+  value && DAY.test(value) ? value : undefined
 
 const STATUSES: readonly (PaymentStatus | "all")[] = [
   "all",
@@ -27,8 +40,8 @@ export function parseFilters(params: URLSearchParams): PaymentFilters {
       : "all",
     merchantId: params.get("merchantId") ?? undefined,
     search: params.get("search") ?? undefined,
-    from: params.get("from") ?? undefined,
-    to: params.get("to") ?? undefined,
+    from: asDay(params.get("from")),
+    to: asDay(params.get("to")),
     page: Number.isFinite(page) && page > 0 ? page : 1,
     sort: sort === "amount" ? "amount" : "createdAt",
     direction: direction === "asc" ? "asc" : "desc",
@@ -49,8 +62,11 @@ export function filterPayments(filters: PaymentFilters): Payment[] {
   return store.payments.filter((payment) => {
     if (status && status !== "all" && payment.status !== status) return false
     if (merchantId && payment.merchantId !== merchantId) return false
-    if (from && payment.createdAt < from) return false
-    if (to && payment.createdAt > to) return false
+    // `from`/`to` are calendar days; `createdAt` is a full instant. Comparing
+    // the instant against a bare day string makes `to` exclusive of its own
+    // day, so a from=X&to=X range returned nothing. Compare day to day.
+    if (from && utcDayKey(payment.createdAt) < from) return false
+    if (to && utcDayKey(payment.createdAt) > to) return false
 
     if (needle) {
       const merchant = merchantById(payment.merchantId)
